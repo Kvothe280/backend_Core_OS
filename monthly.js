@@ -35,9 +35,12 @@ async function asegurarValesMensuales() {
   // Limpiar TODOS los vales mensuales de periodos anteriores (incluidos canjeados)
   await Vale.deleteMany({ tipo: 'mensual', periodo: { $ne: periodo } });
 
+  // Contar TODOS los del período (canjeados incluidos) para no regenerar
+  const totalPeriodo = await Vale.countDocuments({ tipo: 'mensual', periodo });
+  if (totalPeriodo >= 4) return periodo;
+
   const vigentes = await Vale.find({ tipo: 'mensual', periodo, estado: { $ne: 'canjeado' } });
-  const faltan = 4 - vigentes.length;
-  if (faltan <= 0) return periodo;
+  const faltan = 4 - totalPeriodo;
 
   const titulosActuales = new Set(vigentes.map((v) => v.titulo));
   const recientes = await Vale.find({ tipo: 'mensual' }).sort({ createdAt: -1 }).limit(12);

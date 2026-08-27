@@ -3,79 +3,31 @@ require('dotenv').config();
 const { connectDB } = require('./db');
 const Vale = require('./models/Vale');
 const Enigma = require('./models/Enigma');
+const PreguntaCifrada = require('./models/PreguntaCifrada');
 const { asegurarValesMensuales } = require('./monthly');
 
-/**
- * Preguntas: déjalas vacías o edítalas cuando quieras.
- * Claves de prueba (sin acentos, da igual mayúsculas):
- *   Enigma 1 → clave1
- *   Enigma 2 → clave2
- *   Enigma 3 → clave3
- *   Enigma 4 → clave4
- *   Enigma 5 → clave5
- *   Enigma 6 → clave6
- */
-const PROTOCOLO = [
-  {
-    orden: 1,
-    pregunta: '',
-    respuesta: 'clave1',
-    vale: {
-      titulo: 'Vale por una cita sorpresa',
-      descripcion: 'Tú eliges el día. Yo me encargo del resto.',
-      tipo: 'especial',
-    },
-  },
-  {
-    orden: 2,
-    pregunta: '',
-    respuesta: 'clave2',
-    vale: {
-      titulo: 'Vale por una noche de juegos',
-      descripcion: 'Maratón, snacks y sin alarmas al día siguiente.',
-      tipo: 'gratis',
-    },
-  },
-  {
-    orden: 3,
-    pregunta: '',
-    respuesta: 'clave3',
-    vale: {
-      titulo: 'Vale por un café a tu manera',
-      descripcion: 'El que pidas, cuando pidas.',
-      tipo: 'gratis',
-    },
-  },
-  {
-    orden: 4,
-    pregunta: '',
-    respuesta: 'clave4',
-    vale: {
-      titulo: 'Vale por un masaje',
-      descripcion: 'Sin prisa. Música baja.',
-      tipo: 'especial',
-    },
-  },
-  {
-    orden: 5,
-    pregunta: '',
-    respuesta: 'clave5',
-    vale: {
-      titulo: 'Vale por una película y cobija',
-      descripcion: 'Tú pones el título.',
-      tipo: 'gratis',
-    },
-  },
-  {
-    orden: 6,
-    pregunta: '',
-    respuesta: 'clave6',
-    vale: {
-      titulo: 'Cena especial de Aniversario',
-      descripcion: 'La mesa que se pide con tiempo.',
-      tipo: 'especial',
-    },
-  },
+// 3 enigmas con pregunta + clave de prueba, 3 vacíos para cargar manualmente
+// Claves: e1/e2/e3 para Enrique, k1/k2/k3 para Karol
+const PREGUNTAS_TEST = [
+  { orden: 1, pregunta: '¿Cuál fue la primera película que vimos juntos?' },
+  { orden: 2, pregunta: '¿En qué mes empezamos?' },
+  { orden: 3, pregunta: '¿Cuál es el apodo que me pusiste?' },
+];
+
+const PROTOCOLO_VALES = [
+  { orden: 1, titulo: 'Vale por una cita sorpresa',      descripcion: 'Tú eliges el día. Yo me encargo del resto.',          tipo: 'especial' },
+  { orden: 2, titulo: 'Vale por una noche de juegos',    descripcion: 'Maratón, snacks y sin alarmas al día siguiente.',     tipo: 'gratis'   },
+  { orden: 3, titulo: 'Vale por un café a tu manera',    descripcion: 'El que pidas, cuando pidas.',                         tipo: 'gratis'   },
+  { orden: 4, titulo: 'Vale por un masaje',              descripcion: 'Sin prisa. Música baja.',                              tipo: 'especial' },
+  { orden: 5, titulo: 'Vale por una película y cobija',  descripcion: 'Tú pones el título.',                                 tipo: 'gratis'   },
+  { orden: 6, titulo: 'Cena especial de Aniversario',    descripcion: 'La mesa que se pide con tiempo.',                     tipo: 'especial' },
+];
+
+// 3 preguntas del vale cifrado (Karol las responde con [2] en la terminal)
+const PREGUNTAS_CIFRADO_TEST = [
+  { orden: 1, pregunta: '¿Cómo se llama el lugar de nuestra primera cita?',  respuesta: 'cifrado1' },
+  { orden: 2, pregunta: '¿Cuál es la canción que más nos recuerda?',          respuesta: 'cifrado2' },
+  { orden: 3, pregunta: '¿Qué plato te preparo la primera vez?',              respuesta: 'cifrado3' },
 ];
 
 async function seed() {
@@ -84,39 +36,42 @@ async function seed() {
   await Vale.deleteMany({ tipo: { $ne: 'mensual' } });
   await Vale.deleteMany({ tipo: 'mensual', estado: { $ne: 'canjeado' } });
   await Enigma.deleteMany({});
+  await PreguntaCifrada.deleteMany({});
 
-  // Crear enigmas para ambos usuarios
+  // ── Enigmas: 3 con pregunta de prueba + 3 vacíos, para cada usuario ────────
   for (const usuario of ['enrique', 'karol']) {
-    for (const item of PROTOCOLO) {
+    const sufijo = usuario === 'enrique' ? 'e' : 'k';
+
+    for (const vale of PROTOCOLO_VALES) {
+      const test = PREGUNTAS_TEST.find((p) => p.orden === vale.orden);
       const enigma = await Enigma.create({
-        orden: item.orden,
-        pregunta: item.pregunta,
-        respuesta: `${item.respuesta}_${usuario}`,
+        orden: vale.orden,
+        pregunta: test?.pregunta || '',           // 1-3 con pregunta, 4-6 vacíos
+        respuesta: test ? `${sufijo}${vale.orden}` : `clave${vale.orden}${sufijo}`,
         usuario,
         resuelto: false,
       });
 
       if (usuario === 'enrique') {
-        await Vale.create({
-          ...item.vale,
-          mes: item.orden,
-          estado: 'bloqueado',
-          enigmaId: enigma._id,
-        });
+        await Vale.create({ ...vale, mes: vale.orden, estado: 'bloqueado', enigmaId: enigma._id });
       }
     }
+  }
+
+  // ── Preguntas cifradas (globales, Karol las responde) ──────────────────────
+  for (const p of PREGUNTAS_CIFRADO_TEST) {
+    await PreguntaCifrada.create(p);
   }
 
   await asegurarValesMensuales();
 
   console.log('[CORE OS] Seed listo.');
-  console.log('Claves enrique: clave1_enrique … clave6_enrique');
-  console.log('Claves karol:   clave1_karol … clave6_karol');
-  console.log('Las cartas y recuerdos no se borran.');
+  console.log('Enigmas Enrique  (3 cargados): e1, e2, e3');
+  console.log('Enigmas Karol    (3 cargados): k1, k2, k3');
+  console.log('Enigmas 4-6 de cada usuario: vacíos — cargar en [admin]');
+  console.log('Preguntas cifradas (3): cifrado1, cifrado2, cifrado3');
+  console.log('Cartas y recuerdos no se borran.');
   process.exit(0);
 }
 
-seed().catch((error) => {
-  console.error('[CORE OS] Error en seed:', error);
-  process.exit(1);
-});
+seed().catch((err) => { console.error(err); process.exit(1); });
