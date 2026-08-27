@@ -13,7 +13,6 @@ const Enigma = require('./models/Enigma');
 const Carta = require('./models/Carta');
 const Recuerdo = require('./models/Recuerdo');
 const ValeCifradoMes = require('./models/ValeCifradoMes');
-const PreguntaCifrada = require('./models/PreguntaCifrada');
 const Usuario = require('./models/Usuario');
 const { recompensaAleatoria } = require('./config/valeCifrado');
 
@@ -233,116 +232,22 @@ app.post('/api/vales/canjear', async (req, res) => {
 });
 
 // ── Vale Cifrado del Mes ───────────────────────────────────────────────────
+// Se desbloquea automáticamente al abrir la bóveda (6/6 enigmas resueltos).
 
 app.get('/api/vale-cifrado', async (req, res) => {
   try {
     const periodo = periodoActual();
     const usuario = req.headers['x-usuario'] || 'enrique';
-    let registro = await ValeCifradoMes.findOne({ periodo, usuario });
-    if (!registro) registro = await ValeCifradoMes.create({ periodo, usuario });
-    // Solo preguntas no usadas — pool fresco sin repeticiones
-    const preguntas = await PreguntaCifrada.find({ usada: false }).sort({ orden: 1 });
+    const registro = await ValeCifradoMes.findOne({ periodo, usuario });
     res.json({
       periodo,
       usuario,
-      desbloqueado: registro.desbloqueado,
-      recompensa: registro.desbloqueado ? registro.recompensa : '',
-      intentosFallidos: registro.intentosFallidos,
-      preguntas: preguntas.map((p) => ({ id: String(p._id), pregunta: p.pregunta })),
+      desbloqueado: registro?.desbloqueado || false,
+      recompensa: registro?.recompensa || '',
     });
   } catch (error) {
     console.error('[CORE OS] Error GET /api/vale-cifrado:', error);
     res.status(500).json({ error: 'No se pudo cargar el vale cifrado.' });
-  }
-});
-
-app.post('/api/vale-cifrado/intentar', async (req, res) => {
-  try {
-    const { respuestas } = req.body;
-    if (!respuestas || typeof respuestas !== 'object') {
-      return res.status(400).json({ error: 'Faltan las respuestas.' });
-    }
-    const periodo = periodoActual();
-    const usuario = req.headers['x-usuario'] || 'enrique';
-    let registro = await ValeCifradoMes.findOne({ periodo, usuario });
-    if (!registro) registro = await ValeCifradoMes.create({ periodo, usuario });
-    if (registro.desbloqueado) {
-      return res.json({ ok: true, yaDesbloqueado: true, recompensa: registro.recompensa });
-    }
-    // Solo preguntas no usadas
-    const preguntas = await PreguntaCifrada.find({ usada: false }).sort({ orden: 1 });
-    const incorrectas = [];
-    for (const p of preguntas) {
-      const enviada = normalizar(respuestas[String(p._id)] || '');
-      if (normalizar(p.respuesta) && enviada !== normalizar(p.respuesta)) {
-        incorrectas.push(String(p._id));
-      }
-    }
-    if (incorrectas.length > 0) {
-      registro.intentosFallidos += 1;
-      await registro.save();
-      return res.json({ ok: false, incorrectas });
-    }
-    // Marcar todas las preguntas usadas como vetadas del pool
-    await PreguntaCifrada.updateMany(
-      { _id: { $in: preguntas.map((p) => p._id) } },
-      { $set: { usada: true } }
-    );
-    const recompensa = recompensaAleatoria();
-    registro.desbloqueado = true;
-    registro.recompensa = recompensa;
-    await registro.save();
-    res.json({ ok: true, recompensa });
-  } catch (error) {
-    console.error('[CORE OS] Error POST /api/vale-cifrado/intentar:', error);
-    res.status(500).json({ error: 'Fallo al validar respuestas.' });
-  }
-});
-
-// ── CRUD Preguntas Vale Cifrado ────────────────────────────────────────────
-
-app.get('/api/preguntas-cifrado', async (_req, res) => {
-  try {
-    const preguntas = await PreguntaCifrada.find().sort({ orden: 1 });
-    res.json(preguntas);
-  } catch (error) {
-    res.status(500).json({ error: 'No se pudieron cargar las preguntas.' });
-  }
-});
-
-app.post('/api/preguntas-cifrado', async (req, res) => {
-  try {
-    const { pregunta, respuesta, orden } = req.body;
-    if (!pregunta || !respuesta) return res.status(400).json({ error: 'Faltan pregunta o respuesta.' });
-    const total = await PreguntaCifrada.countDocuments();
-    const doc = await PreguntaCifrada.create({ pregunta, respuesta, orden: orden ?? total + 1 });
-    res.status(201).json(doc);
-  } catch (error) {
-    res.status(500).json({ error: 'No se pudo crear la pregunta.' });
-  }
-});
-
-app.put('/api/preguntas-cifrado/:id', async (req, res) => {
-  try {
-    const { pregunta, respuesta, orden } = req.body;
-    const doc = await PreguntaCifrada.findByIdAndUpdate(
-      req.params.id,
-      { pregunta, respuesta, orden },
-      { new: true }
-    );
-    if (!doc) return res.status(404).json({ error: 'No encontrada.' });
-    res.json(doc);
-  } catch (error) {
-    res.status(500).json({ error: 'No se pudo actualizar.' });
-  }
-});
-
-app.delete('/api/preguntas-cifrado/:id', async (req, res) => {
-  try {
-    await PreguntaCifrada.findByIdAndDelete(req.params.id);
-    res.json({ ok: true });
-  } catch (error) {
-    res.status(500).json({ error: 'No se pudo borrar.' });
   }
 });
 
@@ -528,6 +433,14 @@ app.post('/api/terminal/validar', async (req, res) => {
     const estado = await estadoBoveda(periodo, usuario);
     if (estado.bovedaAbierta) {
       await Vale.updateMany({ tipo: { $ne: 'mensual' }, estado: 'bloqueado', usuario }, { $set: { estado: 'disponible' } });
+      // Auto-desbloquear vale cifrado del mes
+      let vcm = await ValeCifradoMes.findOne({ periodo, usuario });
+      if (!vcm) vcm = await ValeCifradoMes.create({ periodo, usuario });
+      if (!vcm.desbloqueado) {
+        vcm.desbloqueado = true;
+        vcm.recompensa = recompensaAleatoria();
+        await vcm.save();
+      }
     }
     res.json({
       ok: true,

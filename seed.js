@@ -5,7 +5,6 @@ const { connectDB } = require('./db');
 const Vale = require('./models/Vale');
 const ValePool = require('./models/ValePool');
 const Enigma = require('./models/Enigma');
-const PreguntaCifrada = require('./models/PreguntaCifrada');
 const ValeCifradoMes = require('./models/ValeCifradoMes');
 const Carta = require('./models/Carta');
 const Recuerdo = require('./models/Recuerdo');
@@ -45,13 +44,6 @@ const POOL_INICIAL = [
   { titulo: 'Vale por una carta corta',          descripcion: 'Papel o digital, pero hoy.' },
 ];
 
-// ── Preguntas del vale cifrado ─────────────────────────────────────────────
-const PREGUNTAS_CIFRADO_TEST = [
-  { orden: 1, pregunta: '¿Cómo se llama el lugar de nuestra primera cita?',  respuesta: 'cifrado1' },
-  { orden: 2, pregunta: '¿Cuál es la canción que más nos recuerda?',          respuesta: 'cifrado2' },
-  { orden: 3, pregunta: '¿Qué plato te preparo la primera vez?',              respuesta: 'cifrado3' },
-];
-
 async function seed() {
   await connectDB();
 
@@ -60,7 +52,6 @@ async function seed() {
     Vale.deleteMany({}),
     ValePool.deleteMany({}),
     Enigma.deleteMany({}),
-    PreguntaCifrada.deleteMany({}),
     ValeCifradoMes.deleteMany({}),
     Carta.deleteMany({}),
     Recuerdo.deleteMany({}),
@@ -93,10 +84,6 @@ async function seed() {
     console.log(`[SEED] ${usuario}: 3 enigmas con pregunta (${sufijo}1/${sufijo}2/${sufijo}3) + 3 vacíos`);
   }
 
-  // Preguntas del vale cifrado
-  await PreguntaCifrada.insertMany(PREGUNTAS_CIFRADO_TEST);
-  console.log('[SEED] PreguntasCifradas: cifrado1, cifrado2, cifrado3');
-
   // Vales mensuales (4 por usuario)
   await asegurarValesMensuales();
   console.log('[SEED] Vales mensuales generados: 4 por usuario');
@@ -104,7 +91,7 @@ async function seed() {
   console.log('\n[SEED] ✓ Base de datos limpia y lista.');
   console.log('  Claves enigmas Enrique: e1, e2, e3 (4-6 vacíos)');
   console.log('  Claves enigmas Karol:   k1, k2, k3 (4-6 vacíos)');
-  console.log('  Claves vale cifrado:    cifrado1, cifrado2, cifrado3');
+  console.log('  Vale cifrado: se desbloquea al resolver los 6 enigmas de la bóveda');
   process.exit(0);
 }
 
