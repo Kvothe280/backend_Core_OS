@@ -8,11 +8,13 @@ const { connectDB } = require('./db');
 const { upload, comprimirArchivo } = require('./upload');
 const { asegurarValesMensuales, periodoActual } = require('./monthly');
 const Vale = require('./models/Vale');
+const ValePool = require('./models/ValePool');
 const Enigma = require('./models/Enigma');
 const Carta = require('./models/Carta');
 const Recuerdo = require('./models/Recuerdo');
 const ValeCifradoMes = require('./models/ValeCifradoMes');
 const PreguntaCifrada = require('./models/PreguntaCifrada');
+const Usuario = require('./models/Usuario');
 const { recompensaAleatoria } = require('./config/valeCifrado');
 
 const app = express();
@@ -341,6 +343,63 @@ app.delete('/api/preguntas-cifrado/:id', async (req, res) => {
     res.json({ ok: true });
   } catch (error) {
     res.status(500).json({ error: 'No se pudo borrar.' });
+  }
+});
+
+// ── Pool de vales mensuales ────────────────────────────────────────────────
+
+app.get('/api/vale-pool', async (_req, res) => {
+  try {
+    const pool = await ValePool.find().sort({ createdAt: -1 });
+    res.json(pool);
+  } catch {
+    res.status(500).json({ error: 'No se pudo cargar el pool.' });
+  }
+});
+
+app.post('/api/vale-pool', async (req, res) => {
+  try {
+    const { titulo, descripcion } = req.body;
+    if (!titulo) return res.status(400).json({ error: 'Falta el título.' });
+    const doc = await ValePool.create({ titulo, descripcion: descripcion || '' });
+    res.status(201).json(doc);
+  } catch {
+    res.status(500).json({ error: 'No se pudo crear.' });
+  }
+});
+
+app.put('/api/vale-pool/:id', async (req, res) => {
+  try {
+    const { titulo, descripcion, activo } = req.body;
+    const doc = await ValePool.findByIdAndUpdate(
+      req.params.id,
+      { titulo, descripcion, activo },
+      { new: true }
+    );
+    if (!doc) return res.status(404).json({ error: 'No encontrado.' });
+    res.json(doc);
+  } catch {
+    res.status(500).json({ error: 'No se pudo actualizar.' });
+  }
+});
+
+app.delete('/api/vale-pool/:id', async (req, res) => {
+  try {
+    await ValePool.findByIdAndDelete(req.params.id);
+    res.json({ ok: true });
+  } catch {
+    res.status(500).json({ error: 'No se pudo borrar.' });
+  }
+});
+
+// ── Usuarios ───────────────────────────────────────────────────────────────
+
+app.get('/api/usuarios', async (_req, res) => {
+  try {
+    const usuarios = await Usuario.find();
+    res.json(usuarios);
+  } catch {
+    res.status(500).json({ error: 'No se pudieron cargar los usuarios.' });
   }
 });
 
