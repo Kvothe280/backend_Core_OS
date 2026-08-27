@@ -5,6 +5,7 @@ const preguntaCifradaSchema = new mongoose.Schema(
     orden: { type: Number, required: true },
     pregunta: { type: String, required: true, trim: true },
     respuesta: { type: String, required: true, trim: true },
+    usada: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

@@ -33,6 +33,11 @@ const valeSchema = new mongoose.Schema(
       enum: ['disponible', 'bloqueado', 'canjeado'],
       default: 'bloqueado',
     },
+    usuario: {
+      type: String,
+      enum: ['karol', 'enrique'],
+      default: 'enrique',
+    },
     enigmaId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Enigma',

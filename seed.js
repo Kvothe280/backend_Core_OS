@@ -52,9 +52,7 @@ async function seed() {
         resuelto: false,
       });
 
-      if (usuario === 'enrique') {
-        await Vale.create({ ...vale, mes: vale.orden, estado: 'bloqueado', enigmaId: enigma._id });
-      }
+      await Vale.create({ ...vale, mes: vale.orden, estado: 'bloqueado', enigmaId: enigma._id, usuario });
     }
   }
 

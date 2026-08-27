@@ -107,8 +107,8 @@ app.get('/api/dashboard', async (req, res) => {
     const [cartas, recuerdos, valesMensuales, valesCanjeados] = await Promise.all([
       Carta.find(),
       Recuerdo.find(),
-      Vale.find({ tipo: 'mensual', periodo: periodoActual(), estado: { $ne: 'canjeado' } }),
-      Vale.countDocuments({ estado: 'canjeado' }),
+      Vale.find({ tipo: 'mensual', periodo: periodoActual(), usuario, estado: { $ne: 'canjeado' } }),
+      Vale.countDocuments({ estado: 'canjeado', usuario }),
     ]);
 
     res.json({
@@ -139,9 +139,9 @@ app.get('/api/dashboard', async (req, res) => {
 app.get('/api/vales', async (req, res) => {
   try {
     await asegurarValesMensuales();
-    const usuario = req.headers['x-usuario'];
+    const usuario = req.headers['x-usuario'] || 'enrique';
     const estado = await estadoBoveda(null, usuario);
-    const vales = await Vale.find().sort({ tipo: 1, mes: 1, createdAt: -1 });
+    const vales = await Vale.find({ usuario }).sort({ tipo: 1, mes: 1, createdAt: -1 });
 
     if (!estado.bovedaAbierta) {
       return res.json({
@@ -232,14 +232,17 @@ app.post('/api/vales/canjear', async (req, res) => {
 
 // ── Vale Cifrado del Mes ───────────────────────────────────────────────────
 
-app.get('/api/vale-cifrado', async (_req, res) => {
+app.get('/api/vale-cifrado', async (req, res) => {
   try {
     const periodo = periodoActual();
-    let registro = await ValeCifradoMes.findOne({ periodo });
-    if (!registro) registro = await ValeCifradoMes.create({ periodo });
-    const preguntas = await PreguntaCifrada.find().sort({ orden: 1 });
+    const usuario = req.headers['x-usuario'] || 'enrique';
+    let registro = await ValeCifradoMes.findOne({ periodo, usuario });
+    if (!registro) registro = await ValeCifradoMes.create({ periodo, usuario });
+    // Solo preguntas no usadas — pool fresco sin repeticiones
+    const preguntas = await PreguntaCifrada.find({ usada: false }).sort({ orden: 1 });
     res.json({
       periodo,
+      usuario,
       desbloqueado: registro.desbloqueado,
       recompensa: registro.desbloqueado ? registro.recompensa : '',
       intentosFallidos: registro.intentosFallidos,
@@ -258,12 +261,14 @@ app.post('/api/vale-cifrado/intentar', async (req, res) => {
       return res.status(400).json({ error: 'Faltan las respuestas.' });
     }
     const periodo = periodoActual();
-    let registro = await ValeCifradoMes.findOne({ periodo });
-    if (!registro) registro = await ValeCifradoMes.create({ periodo });
+    const usuario = req.headers['x-usuario'] || 'enrique';
+    let registro = await ValeCifradoMes.findOne({ periodo, usuario });
+    if (!registro) registro = await ValeCifradoMes.create({ periodo, usuario });
     if (registro.desbloqueado) {
       return res.json({ ok: true, yaDesbloqueado: true, recompensa: registro.recompensa });
     }
-    const preguntas = await PreguntaCifrada.find().sort({ orden: 1 });
+    // Solo preguntas no usadas
+    const preguntas = await PreguntaCifrada.find({ usada: false }).sort({ orden: 1 });
     const incorrectas = [];
     for (const p of preguntas) {
       const enviada = normalizar(respuestas[String(p._id)] || '');
@@ -276,6 +281,11 @@ app.post('/api/vale-cifrado/intentar', async (req, res) => {
       await registro.save();
       return res.json({ ok: false, incorrectas });
     }
+    // Marcar todas las preguntas usadas como vetadas del pool
+    await PreguntaCifrada.updateMany(
+      { _id: { $in: preguntas.map((p) => p._id) } },
+      { $set: { usada: true } }
+    );
     const recompensa = recompensaAleatoria();
     registro.desbloqueado = true;
     registro.recompensa = recompensa;
@@ -458,7 +468,7 @@ app.post('/api/terminal/validar', async (req, res) => {
 
     const estado = await estadoBoveda(periodo, usuario);
     if (estado.bovedaAbierta) {
-      await Vale.updateMany({ tipo: { $ne: 'mensual' }, estado: 'bloqueado' }, { $set: { estado: 'disponible' } });
+      await Vale.updateMany({ tipo: { $ne: 'mensual' }, estado: 'bloqueado', usuario }, { $set: { estado: 'disponible' } });
     }
     res.json({
       ok: true,

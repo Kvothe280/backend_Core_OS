@@ -32,35 +32,31 @@ function mezclar(lista) {
 async function asegurarValesMensuales() {
   const periodo = periodoActual();
 
-  // Limpiar TODOS los vales mensuales de periodos anteriores (incluidos canjeados)
+  // Limpiar todos los vales mensuales de períodos anteriores
   await Vale.deleteMany({ tipo: 'mensual', periodo: { $ne: periodo } });
 
-  // Contar TODOS los del período (canjeados incluidos) para no regenerar
-  const totalPeriodo = await Vale.countDocuments({ tipo: 'mensual', periodo });
-  if (totalPeriodo >= 4) return periodo;
+  for (const usuario of ['enrique', 'karol']) {
+    // Contar todos (incluyendo canjeados) para no regenerar si ya hay 4
+    const totalPeriodo = await Vale.countDocuments({ tipo: 'mensual', periodo, usuario });
+    if (totalPeriodo >= 4) continue;
 
-  const vigentes = await Vale.find({ tipo: 'mensual', periodo, estado: { $ne: 'canjeado' } });
-  const faltan = 4 - totalPeriodo;
+    const vigentes = await Vale.find({ tipo: 'mensual', periodo, usuario, estado: { $ne: 'canjeado' } });
+    const faltan = 4 - totalPeriodo;
 
-  const titulosActuales = new Set(vigentes.map((v) => v.titulo));
-  const recientes = await Vale.find({ tipo: 'mensual' }).sort({ createdAt: -1 }).limit(12);
-  const usados = new Set(recientes.map((v) => v.titulo));
+    const titulosActuales = new Set(vigentes.map((v) => v.titulo));
+    const recientes = await Vale.find({ tipo: 'mensual', usuario }).sort({ createdAt: -1 }).limit(12);
+    const usados = new Set(recientes.map((v) => v.titulo));
 
-  let candidatos = POOL.filter((p) => !titulosActuales.has(p.titulo) && !usados.has(p.titulo));
-  if (candidatos.length < faltan) {
-    candidatos = POOL.filter((p) => !titulosActuales.has(p.titulo));
+    let candidatos = POOL.filter((p) => !titulosActuales.has(p.titulo) && !usados.has(p.titulo));
+    if (candidatos.length < faltan) {
+      candidatos = POOL.filter((p) => !titulosActuales.has(p.titulo));
+    }
+
+    const elegidos = mezclar(candidatos).slice(0, faltan);
+    await Vale.insertMany(
+      elegidos.map((item) => ({ ...item, tipo: 'mensual', estado: 'disponible', periodo, mes: 0, usuario }))
+    );
   }
-
-  const elegidos = mezclar(candidatos).slice(0, faltan);
-  await Vale.insertMany(
-    elegidos.map((item) => ({
-      ...item,
-      tipo: 'mensual',
-      estado: 'disponible',
-      periodo,
-      mes: 0,
-    }))
-  );
 
   return periodo;
 }
