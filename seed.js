@@ -4,32 +4,15 @@ const mongoose = require('mongoose');
 const { connectDB } = require('./db');
 const Vale = require('./models/Vale');
 const ValePool = require('./models/ValePool');
-const Enigma = require('./models/Enigma');
-const ValeCifradoMes = require('./models/ValeCifradoMes');
+const ValeEspecialPool = require('./models/ValeEspecialPool');
+const PreguntaMensual = require('./models/PreguntaMensual');
+const ValeEspecialMes = require('./models/ValeEspecialMes');
 const Carta = require('./models/Carta');
 const Recuerdo = require('./models/Recuerdo');
 const Usuario = require('./models/Usuario');
 const { asegurarValesMensuales } = require('./monthly');
 
-// ── Enigmas de prueba (3 con pregunta, 3 vacíos) ──────────────────────────
-const PREGUNTAS_TEST = [
-  { orden: 1, pregunta: '¿Cuál fue la primera película que vimos juntos?' },
-  { orden: 2, pregunta: '¿En qué mes empezamos?' },
-  { orden: 3, pregunta: '¿Cuál es el apodo que me pusiste?' },
-];
-
-// ── Vales especiales ligados a enigmas ────────────────────────────────────
-const PROTOCOLO_VALES = [
-  { orden: 1, titulo: 'Vale por una cita sorpresa',      descripcion: 'Tú eliges el día. Yo me encargo del resto.',         tipo: 'especial' },
-  { orden: 2, titulo: 'Vale por una noche de juegos',    descripcion: 'Maratón, snacks y sin alarmas al día siguiente.',    tipo: 'gratis'   },
-  { orden: 3, titulo: 'Vale por un café a tu manera',    descripcion: 'El que pidas, cuando pidas.',                        tipo: 'gratis'   },
-  { orden: 4, titulo: 'Vale por un masaje',              descripcion: 'Sin prisa. Música baja.',                             tipo: 'especial' },
-  { orden: 5, titulo: 'Vale por una película y cobija',  descripcion: 'Tú pones el título.',                                tipo: 'gratis'   },
-  { orden: 6, titulo: 'Cena especial de Aniversario',    descripcion: 'La mesa que se pide con tiempo.',                    tipo: 'especial' },
-];
-
-// ── Pool de vales mensuales (se puede gestionar desde el panel admin) ─────
-const POOL_INICIAL = [
+const POOL_MENSUAL = [
   { titulo: 'Vale por un café juntos',          descripcion: 'El de siempre, o uno nuevo.' },
   { titulo: 'Vale por una caminata',             descripcion: 'Sin prisa y sin celular de por medio.' },
   { titulo: 'Vale por una película',             descripcion: 'Tú eliges el título.' },
@@ -44,15 +27,34 @@ const POOL_INICIAL = [
   { titulo: 'Vale por una carta corta',          descripcion: 'Papel o digital, pero hoy.' },
 ];
 
+// Premios especiales que Enrique escribe para Karol
+const POOL_ESPECIAL_ENRIQUE = [
+  { titulo: 'Cena de aniversario', descripcion: 'La mesa que se pide con tiempo, el plan que eliges tú.' },
+  { titulo: 'Noche de películas', descripcion: 'Maratón, snacks a elegir y sin alarmas al día siguiente.' },
+  { titulo: 'Día de aventura', descripcion: 'Tú propones el destino, yo me encargo del resto.' },
+  { titulo: 'Vale por un masaje largo', descripcion: 'Sin prisa, con aceite y música que tú pongas.' },
+  { titulo: 'Mañana libre sin planes', descripcion: 'Solo tú, yo y lo que se nos ocurra.' },
+];
+
+// Premios especiales que Karol escribe para Enrique
+const POOL_ESPECIAL_KAROL = [
+  { titulo: 'Tarde de videojuegos', descripcion: 'Sin interrupciones, botanas incluidas.' },
+  { titulo: 'Desayuno especial', descripcion: 'Lo que más te guste, preparado con paciencia.' },
+  { titulo: 'Noche de música', descripcion: 'Tu playlist, a todo volumen, con baile opcional.' },
+  { titulo: 'Vale por una siesta juntos', descripcion: 'Cobija, silencio y sin culpa.' },
+  { titulo: 'Plan sorpresa', descripcion: 'Yo organizo todo, tú solo disfruta.' },
+];
+
 async function seed() {
   await connectDB();
 
-  console.log('[SEED] Limpiando TODAS las colecciones…');
+  console.log('[SEED] Limpiando colecciones…');
   await Promise.all([
     Vale.deleteMany({}),
     ValePool.deleteMany({}),
-    Enigma.deleteMany({}),
-    ValeCifradoMes.deleteMany({}),
+    ValeEspecialPool.deleteMany({}),
+    PreguntaMensual.deleteMany({}),
+    ValeEspecialMes.deleteMany({}),
     Carta.deleteMany({}),
     Recuerdo.deleteMany({}),
     Usuario.deleteMany({}),
@@ -62,36 +64,23 @@ async function seed() {
   await Usuario.create([{ nombre: 'enrique' }, { nombre: 'karol' }]);
   console.log('[SEED] Usuarios: enrique, karol');
 
-  // Pool mensual
-  await ValePool.insertMany(POOL_INICIAL.map((v) => ({ ...v, activo: true })));
-  console.log(`[SEED] Pool mensual: ${POOL_INICIAL.length} vales`);
+  // Pool mensual compartida
+  await ValePool.insertMany(POOL_MENSUAL.map((v) => ({ ...v, activo: true })));
+  console.log(`[SEED] Pool mensual: ${POOL_MENSUAL.length} vales`);
 
-  // Enigmas + vales especiales por usuario
-  for (const usuario of ['enrique', 'karol']) {
-    const sufijo = usuario === 'enrique' ? 'e' : 'k';
-
-    for (const vale of PROTOCOLO_VALES) {
-      const test = PREGUNTAS_TEST.find((p) => p.orden === vale.orden);
-      const enigma = await Enigma.create({
-        orden: vale.orden,
-        pregunta: test?.pregunta || '',
-        respuesta: test ? `${sufijo}${vale.orden}` : `clave${vale.orden}${sufijo}`,
-        usuario,
-        resuelto: false,
-      });
-      await Vale.create({ ...vale, mes: vale.orden, estado: 'bloqueado', enigmaId: enigma._id, usuario });
-    }
-    console.log(`[SEED] ${usuario}: 3 enigmas con pregunta (${sufijo}1/${sufijo}2/${sufijo}3) + 3 vacíos`);
-  }
+  // Pools de vales especiales (secretas por usuario)
+  await ValeEspecialPool.insertMany(POOL_ESPECIAL_ENRIQUE.map((v) => ({ ...v, autor: 'enrique', usadoEnPeriodos: [] })));
+  await ValeEspecialPool.insertMany(POOL_ESPECIAL_KAROL.map((v) => ({ ...v, autor: 'karol', usadoEnPeriodos: [] })));
+  console.log(`[SEED] Pool especial enrique: ${POOL_ESPECIAL_ENRIQUE.length} premios`);
+  console.log(`[SEED] Pool especial karol: ${POOL_ESPECIAL_KAROL.length} premios`);
 
   // Vales mensuales (4 por usuario)
   await asegurarValesMensuales();
-  console.log('[SEED] Vales mensuales generados: 4 por usuario');
+  console.log('[SEED] Vales mensuales: 4 por usuario');
 
-  console.log('\n[SEED] ✓ Base de datos limpia y lista.');
-  console.log('  Claves enigmas Enrique: e1, e2, e3 (4-6 vacíos)');
-  console.log('  Claves enigmas Karol:   k1, k2, k3 (4-6 vacíos)');
-  console.log('  Vale cifrado: se desbloquea al resolver los 6 enigmas de la bóveda');
+  console.log('\n[SEED] ✓ Base de datos lista. Sistema de preguntas mensuales activo.');
+  console.log('  Preguntas: se cargan días 1-12. Respuesta: días 13-18. Límite: 6 por usuario/mes.');
+  console.log('  Penalización por faltantes: 1-2 ligera | 3-4 media | 5-6 grave');
   process.exit(0);
 }
 

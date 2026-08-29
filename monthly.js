@@ -50,8 +50,8 @@ async function asegurarValesMensuales() {
 
     const titulosActuales = new Set(vigentes.map((v) => v.titulo));
 
-    // Anti-consecutivo: excluir los usados en los últimos 8 vales por usuario (~2 meses)
-    const recientes = await Vale.find({ tipo: 'mensual', usuario }).sort({ createdAt: -1 }).limit(8);
+    // Anti-consecutivo: excluir los usados en el último mes (~4 vales)
+    const recientes = await Vale.find({ tipo: 'mensual', usuario }).sort({ createdAt: -1 }).limit(4);
     const usados = new Set(recientes.map((v) => v.titulo));
 
     // Candidatos frescos (no en el mes ni en los últimos 2 meses)
