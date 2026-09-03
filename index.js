@@ -6,7 +6,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const jwt = require('jsonwebtoken');
-const { Client, GatewayIntentBits, Partials, EmbedBuilder } = require('discord.js');
+// discord.js removido — notificaciones via WhatsApp (CallMeBot)
 const { connectDB } = require('./db');
 const { upload, comprimirArchivo } = require('./upload');
 const { asegurarValesMensuales, periodoActual } = require('./monthly');
@@ -27,7 +27,10 @@ const JWT_SECRET = process.env.JWT_SECRET || 'coreos-dev-secret-changeme';
 
 // ── Seguridad — headers HTTP ───────────────────────────────────────────────
 app.use(helmet({ contentSecurityPolicy: false }));
-app.use(cors());
+app.use(cors({
+  origin: process.env.FRONTEND_URL || '*',
+  credentials: true,
+}));
 app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
@@ -193,14 +196,6 @@ function serieMensual(cartas, recuerdos) {
   });
 }
 
-// ── Discord (backup) ───────────────────────────────────────────────────────
-
-const discordClient = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.DirectMessages],
-  partials: [Partials.Channel],
-});
-discordClient.once('ready', () => console.log(`[CORE OS] Bot Discord en línea como ${discordClient.user.tag}`));
-
 // ── Notificaciones WhatsApp (CallMeBot) ────────────────────────────────────
 
 // Configuración por usuario (en .env):
@@ -213,32 +208,35 @@ const WA_CONFIG = {
   karol:   { phone: process.env.WA_KAROL_PHONE,   key: process.env.WA_KAROL_KEY },
   enrique: { phone: process.env.WA_ENRIQUE_PHONE, key: process.env.WA_ENRIQUE_KEY },
 };
+console.log('[WA] Config cargada —',
+  `karol: ${process.env.WA_KAROL_PHONE?.slice(-4) ?? 'SIN PHONE'} / key=${process.env.WA_KAROL_KEY ?? 'SIN KEY'}`,
+  `| enrique: ${process.env.WA_ENRIQUE_PHONE?.slice(-4) ?? 'SIN PHONE'} / key=${process.env.WA_ENRIQUE_KEY ?? 'SIN KEY'}`
+);
 
 async function enviarWhatsApp(usuario, texto) {
   const cfg = WA_CONFIG[usuario];
-  if (!cfg?.phone || !cfg?.key) return false;
+  if (!cfg?.phone || !cfg?.key) {
+    console.warn(`[WA] Sin credenciales para "${usuario}": phone=${cfg?.phone} key=${cfg?.key}`);
+    return false;
+  }
   try {
     const url = `https://api.callmebot.com/whatsapp.php?phone=${encodeURIComponent(cfg.phone)}&text=${encodeURIComponent(texto)}&apikey=${cfg.key}`;
     const res = await fetch(url);
-    return res.ok;
+    const body = await res.text();
+    if (!res.ok || body.toLowerCase().includes('error') || body.toLowerCase().includes('invalid')) {
+      console.error(`[WA] Fallo para "${usuario}" (${res.status}): ${body.slice(0, 200)}`);
+      return false;
+    }
+    console.log(`[WA] OK para "${usuario}": ${body.slice(0, 80)}`);
+    return true;
   } catch (err) {
-    console.error('[CORE OS] WhatsApp error:', err.message);
+    console.error(`[WA] Error de red para "${usuario}":`, err.message);
     return false;
   }
 }
 
-// Envía por WhatsApp; si falla intenta por Discord como backup
-async function notificar(usuario, textoWa, embedDiscord) {
-  const waOk = await enviarWhatsApp(usuario, textoWa);
-  if (!waOk && embedDiscord) {
-    const idEnv = usuario === 'karol' ? process.env.DISCORD_ELLA_ID : process.env.DISCORD_TU_ID;
-    if (idEnv) {
-      try {
-        const u = await discordClient.users.fetch(idEnv);
-        await u.send(typeof embedDiscord === 'string' ? embedDiscord : { embeds: [embedDiscord] });
-      } catch (de) { console.error('[CORE OS] Discord fallback:', de.message); }
-    }
-  }
+async function notificar(usuario, textoWa) {
+  await enviarWhatsApp(usuario, textoWa);
 }
 
 // Control anti-spam mensajes: guarda la fecha del último aviso por destinatario
@@ -250,39 +248,49 @@ function hoy() {
 
 async function notificarPrimerMensaje(destinatario, remitente) {
   const fecha = hoy();
-  if (ultimoAvisoMensaje[destinatario] === fecha) return; // ya fue notificado hoy
+  if (ultimoAvisoMensaje[destinatario] === fecha) {
+    console.log(`[WA] Anti-spam: ya se notificó a "${destinatario}" hoy, se omite.`);
+    return;
+  }
   ultimoAvisoMensaje[destinatario] = fecha;
   const nombreRemitente = remitente === 'karol' ? 'Karol' : 'Enrique';
-  await notificar(
-    destinatario,
-    `💬 ${nombreRemitente} te mandó un mensaje en CORE OS. Entra para leerlo.`,
-    `💬 **${nombreRemitente}** te escribió en CORE OS.`
-  );
+  console.log(`[WA] Enviando primer-mensaje-del-día a "${destinatario}" de parte de "${remitente}"`);
+  await notificar(destinatario, `💬 ${nombreRemitente} te mandó un mensaje en CORE OS. Entra para leerlo.`);
 }
 
 // ── Autenticación (sin token requerido) ───────────────────────────────────
 
 app.post('/api/auth/login', limiterAuth, (req, res) => {
-  const { clave } = req.body;
+  const { clave, usuario } = req.body;
   const passKarol   = process.env.PASS_KAROL;
   const passEnrique = process.env.PASS_ENRIQUE;
 
   // Modo dev: sin contraseñas configuradas
   if (!passKarol && !passEnrique) {
-    const token = jwt.sign({ usuario: 'enrique' }, JWT_SECRET, { expiresIn: '30d' });
-    return res.json({ ok: true, usuario: 'enrique', token });
+    const u = usuario === 'karol' ? 'karol' : 'enrique';
+    const token = jwt.sign({ usuario: u }, JWT_SECRET, { expiresIn: '30d' });
+    return res.json({ ok: true, usuario: u, token });
   }
 
   const input = normalizar(clave || '');
-  if (passKarol && input === normalizar(passKarol)) {
-    const token = jwt.sign({ usuario: 'karol' }, JWT_SECRET, { expiresIn: '30d' });
-    return res.json({ ok: true, usuario: 'karol', token });
+
+  // Validación por usuario específico (evita que una contraseña acceda al perfil del otro)
+  if (usuario === 'karol') {
+    if (passKarol && input === normalizar(passKarol)) {
+      const token = jwt.sign({ usuario: 'karol' }, JWT_SECRET, { expiresIn: '30d' });
+      return res.json({ ok: true, usuario: 'karol', token });
+    }
+    return res.status(401).json({ ok: false, error: 'Contraseña incorrecta.' });
   }
-  if (passEnrique && input === normalizar(passEnrique)) {
-    const token = jwt.sign({ usuario: 'enrique' }, JWT_SECRET, { expiresIn: '30d' });
-    return res.json({ ok: true, usuario: 'enrique', token });
+  if (usuario === 'enrique') {
+    if (passEnrique && input === normalizar(passEnrique)) {
+      const token = jwt.sign({ usuario: 'enrique' }, JWT_SECRET, { expiresIn: '30d' });
+      return res.json({ ok: true, usuario: 'enrique', token });
+    }
+    return res.status(401).json({ ok: false, error: 'Contraseña incorrecta.' });
   }
-  res.status(401).json({ ok: false, error: 'Contraseña incorrecta.' });
+
+  res.status(400).json({ ok: false, error: 'Selecciona un perfil.' });
 });
 
 // ── Todas las rutas siguientes requieren token ─────────────────────────────
@@ -356,13 +364,8 @@ app.post('/api/vales/canjear', async (req, res) => {
     const fechaTexto = vale.detalles_canje.fecha.toLocaleDateString('es-MX', { timeZone: 'America/Mexico_City', day: 'numeric', month: 'long', year: 'numeric' });
     const nombreUsuario = usuario === 'karol' ? 'Karol' : 'Enrique';
     const otro = otroUsuario(usuario);
-    const embed = new EmbedBuilder().setColor(0x6f4e37).setTitle('Vale canjeado')
-      .setDescription(`**${vale.titulo}** — canjeado por ${nombreUsuario}.`)
-      .addFields({ name: 'Fecha', value: fechaTexto, inline: true }, { name: 'Notas', value: notas || '—' })
-      .setTimestamp();
-    // WhatsApp principal → Discord backup
-    await notificar(usuario, `✅ Vale canjeado: "${vale.titulo}". Fecha: ${fechaTexto}.`, embed);
-    await notificar(otro, `🎟️ ${nombreUsuario} canjeó el vale "${vale.titulo}". Fecha: ${fechaTexto}.`, `🎟️ **${nombreUsuario}** canjeó **${vale.titulo}**.`);
+    await notificar(usuario, `✅ Canjeaste el vale "${vale.titulo}". Fecha: ${fechaTexto}.`);
+    await notificar(otro, `🎟️ ${nombreUsuario} canjeó el vale "${vale.titulo}". Fecha: ${fechaTexto}.`);
     res.json({ ok: true, vale });
   } catch (error) {
     res.status(500).json({ error: 'No se pudo canjear el vale.' });
@@ -626,8 +629,8 @@ app.post('/api/vale-especial-mes/canjear', async (req, res) => {
     const nombreDest = destinatario === 'karol' ? 'Karol' : 'Enrique';
     const fechaTexto = vem.fechaCanje.toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' });
     const autor = vem.autor;
-    await notificar(destinatario, `✅ Canjeaste tu vale especial "${vem.titulo}". ¡Disfrútalo! Fecha: ${fechaTexto}.`, null);
-    await notificar(autor, `🎁 ${nombreDest} canjeó su vale especial "${vem.titulo}". Fecha: ${fechaTexto}.`, `🎁 **${nombreDest}** canjeó su vale especial **${vem.titulo}**.`);
+    await notificar(destinatario, `✅ Canjeaste tu vale especial "${vem.titulo}". ¡Disfrútalo! Fecha: ${fechaTexto}.`);
+    await notificar(autor, `🎁 ${nombreDest} canjeó su vale especial "${vem.titulo}". Fecha: ${fechaTexto}.`);
     res.json({ ok: true, vem });
   } catch { res.status(500).json({ error: 'No se pudo canjear.' }); }
 });
@@ -849,11 +852,7 @@ app.post('/api/citas-propuestas', async (req, res) => {
     });
     const nombreProp = proponente === 'karol' ? 'Karol' : 'Enrique';
     const fechaCitaTexto = new Date(fechaPropuesta).toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' });
-    await notificar(
-      destinatario,
-      `📅 ${nombreProp} te propuso una cita: "${titulo}" para el ${fechaCitaTexto}. Entra a CORE OS para aceptar o rechazar.`,
-      `📅 **${nombreProp}** te propuso una cita: **${titulo}** · ${fechaCitaTexto}`
-    );
+    await notificar(destinatario, `📅 ${nombreProp} te propuso una cita: "${titulo}" para el ${fechaCitaTexto}. Entra a CORE OS para aceptar o rechazar.`);
     res.status(201).json(cita);
   } catch { res.status(500).json({ error: 'No se pudo crear la cita.' }); }
 });
@@ -864,15 +863,22 @@ app.put('/api/citas-propuestas/:id/aceptar', async (req, res) => {
     const usuario = req.headers['x-usuario'] || 'enrique';
     const cita = await CitaPropuesta.findOne({ _id: req.params.id, destinatario: usuario, estado: 'pendiente' });
     if (!cita) return res.status(404).json({ error: 'Cita no encontrada o no puedes aceptarla.' });
+
+    // Crear Recuerdo inmediatamente al aceptar
+    const recuerdo = await Recuerdo.create({
+      titulo: cita.titulo,
+      nota: cita.nota || '',
+      tipo: 'cita',
+      fecha: cita.fechaPropuesta,
+    });
+
     cita.estado = 'aceptada';
     cita.fechaRespuesta = new Date();
+    cita.recuerdoId = recuerdo._id;
     await cita.save();
+
     const nombreDest = usuario === 'karol' ? 'Karol' : 'Enrique';
-    await notificar(
-      cita.proponente,
-      `✅ ${nombreDest} aceptó tu cita "${cita.titulo}". ¡Ya está confirmada!`,
-      `✅ **${nombreDest}** aceptó la cita **${cita.titulo}**.`
-    );
+    await notificar(cita.proponente, `✅ ${nombreDest} aceptó tu cita "${cita.titulo}". ¡Ya está en Recuerdos!`);
     res.json(cita);
   } catch { res.status(500).json({ error: 'No se pudo aceptar.' }); }
 });
@@ -884,14 +890,35 @@ app.delete('/api/citas-propuestas/:id/rechazar', async (req, res) => {
     const cita = await CitaPropuesta.findOne({ _id: req.params.id, destinatario: usuario, estado: 'pendiente' });
     if (!cita) return res.status(404).json({ error: 'No encontrada o ya no es pendiente.' });
     const nombreDest = usuario === 'karol' ? 'Karol' : 'Enrique';
-    await notificar(
-      cita.proponente,
-      `❌ ${nombreDest} no pudo aceptar la cita "${cita.titulo}". Puedes proponer otra fecha.`,
-      `❌ **${nombreDest}** rechazó la cita **${cita.titulo}**.`
-    );
+    await notificar(cita.proponente, `❌ ${nombreDest} no pudo aceptar la cita "${cita.titulo}". Puedes proponer otra fecha.`);
     await cita.deleteOne();
     res.json({ ok: true });
   } catch { res.status(500).json({ error: 'No se pudo rechazar.' }); }
+});
+
+// Reagendar cita aceptada (cualquiera de los dos)
+app.put('/api/citas-propuestas/:id/reagendar', async (req, res) => {
+  try {
+    const usuario = req.headers['x-usuario'] || 'enrique';
+    const { fecha } = req.body;
+    if (!fecha) return res.status(400).json({ error: 'Falta la nueva fecha.' });
+    const cita = await CitaPropuesta.findOne({
+      _id: req.params.id,
+      $or: [{ proponente: usuario }, { destinatario: usuario }],
+      estado: 'aceptada',
+    });
+    if (!cita) return res.status(404).json({ error: 'Cita no encontrada o no está aceptada.' });
+    cita.fechaPropuesta = new Date(fecha);
+    await cita.save();
+    if (cita.recuerdoId) {
+      await Recuerdo.findByIdAndUpdate(cita.recuerdoId, { fecha: new Date(fecha) });
+    }
+    const nombreUsuario = usuario === 'karol' ? 'Karol' : 'Enrique';
+    const otro = otroUsuario(usuario);
+    const fechaTexto = new Date(fecha).toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' });
+    await notificar(otro, `📅 ${nombreUsuario} reagendó la cita "${cita.titulo}" para el ${fechaTexto}.`);
+    res.json({ ok: true, cita });
+  } catch { res.status(500).json({ error: 'No se pudo reagendar.' }); }
 });
 
 // Cancelar cita (cualquiera de los dos, en cualquier estado activo)
@@ -909,7 +936,7 @@ app.delete('/api/citas-propuestas/:id/cancelar', async (req, res) => {
   } catch { res.status(500).json({ error: 'No se pudo cancelar.' }); }
 });
 
-// Completar cita → crea Recuerdo automáticamente
+// Completar cita → marca como completada (el Recuerdo ya fue creado al aceptar)
 app.put('/api/citas-propuestas/:id/completar', async (req, res) => {
   try {
     const usuario = req.headers['x-usuario'] || 'enrique';
@@ -919,19 +946,9 @@ app.put('/api/citas-propuestas/:id/completar', async (req, res) => {
       estado: 'aceptada',
     });
     if (!cita) return res.status(404).json({ error: 'No encontrada o no está aceptada.' });
-
-    const recuerdo = await Recuerdo.create({
-      titulo: cita.titulo,
-      nota: cita.nota || '',
-      tipo: 'cita',
-      fecha: cita.fechaPropuesta,
-    });
-
     cita.estado = 'completada';
-    cita.recuerdoId = recuerdo._id;
     await cita.save();
-
-    res.json({ ok: true, recuerdo, cita });
+    res.json({ ok: true, cita });
   } catch { res.status(500).json({ error: 'No se pudo completar.' }); }
 });
 
@@ -1005,7 +1022,6 @@ app.delete('/api/mensajes/:id', async (req, res) => {
 async function start() {
   await connectDB();
   await asegurarValesMensuales();
-  await discordClient.login(process.env.DISCORD_BOT_TOKEN);
   app.listen(PORT, () => console.log(`[CORE OS] API escuchando en http://localhost:${PORT}`));
 }
 
