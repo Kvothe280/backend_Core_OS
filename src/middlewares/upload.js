@@ -23,8 +23,8 @@ async function comprimirArchivo(req, res, next) {
   }
   try {
     req.file.buffer = await sharp(req.file.buffer)
-      .resize({ width: 1600, withoutEnlargement: true })
-      .jpeg({ quality: 78, mozjpeg: true })
+      .resize({ width: 1280, withoutEnlargement: true })
+      .jpeg({ quality: 72, mozjpeg: true })
       .toBuffer();
     req.file.mimetype = 'image/jpeg';
   } catch (err) {

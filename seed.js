@@ -1,16 +1,16 @@
 require('dotenv').config();
 
 const mongoose = require('mongoose');
-const { connectDB } = require('./db');
-const Vale = require('./models/Vale');
-const ValePool = require('./models/ValePool');
-const ValeEspecialPool = require('./models/ValeEspecialPool');
-const PreguntaMensual = require('./models/PreguntaMensual');
-const ValeEspecialMes = require('./models/ValeEspecialMes');
-const Carta = require('./models/Carta');
-const Recuerdo = require('./models/Recuerdo');
-const Usuario = require('./models/Usuario');
-const { asegurarValesMensuales } = require('./monthly');
+const { connectDB } = require('./src/config/db');
+const Vale = require('./src/models/Vale');
+const ValePool = require('./src/models/ValePool');
+const ValeEspecialPool = require('./src/models/ValeEspecialPool');
+const PreguntaMensual = require('./src/models/PreguntaMensual');
+const ValeEspecialMes = require('./src/models/ValeEspecialMes');
+const Carta = require('./src/models/Carta');
+const Recuerdo = require('./src/models/Recuerdo');
+const Usuario = require('./src/models/Usuario');
+const { asegurarValesMensuales } = require('./src/services/monthly');
 
 const POOL_MENSUAL = [
   { titulo: 'Vale por un café juntos',          descripcion: 'El de siempre, o uno nuevo.' },

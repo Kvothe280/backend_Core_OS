@@ -1,5 +1,5 @@
-const Vale = require('./models/Vale');
-const ValePool = require('./models/ValePool');
+const Vale = require('../models/Vale');
+const ValePool = require('../models/ValePool');
 
 // Fallback si el pool en BD está vacío
 const POOL_FALLBACK = [

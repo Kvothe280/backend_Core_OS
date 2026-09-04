@@ -10,6 +10,15 @@ const recuerdoSchema = new mongoose.Schema(
     imagenData: { type: Buffer, select: false },
     imagenMime: { type: String, default: '' },
     imagenEnBD: { type: Boolean, default: false },
+    ubicacion: {
+      type: {
+        lat: { type: Number, required: true },
+        lng: { type: Number, required: true },
+        nombre: { type: String, default: '', trim: true },
+      },
+      default: undefined,
+      _id: false,
+    },
   },
   { timestamps: true }
 );
