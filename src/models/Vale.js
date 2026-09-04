@@ -38,11 +38,6 @@ const valeSchema = new mongoose.Schema(
       enum: ['karol', 'enrique'],
       default: 'enrique',
     },
-    enigmaId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Enigma',
-      default: null,
-    },
     detalles_canje: {
       fecha: {
         type: Date,
