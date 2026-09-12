@@ -60,4 +60,10 @@ app.use('/api/wishlist', wishlistRoutes);
 app.use('/api/fechas-importantes', fechasImportantesRoutes);
 app.use('/api/logros', logrosRoutes);
 
+// ── Manejo de errores — nunca exponer stack traces ni HTML al cliente ──────
+app.use((err, req, res, _next) => {
+  console.error(err);
+  res.status(err.status || err.statusCode || 500).json({ ok: false, error: 'Error interno del servidor.' });
+});
+
 module.exports = app;
