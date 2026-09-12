@@ -47,7 +47,8 @@ async function verificarEstadoEspecial(periodo, destinatario) {
 
   const preguntasAutor = await PreguntaMensual.find({ autor, periodo }).sort({ orden: 1 });
   const total = preguntasAutor.length;
-  const faltantes = 6 - total;
+  const respondidas = preguntasAutor.filter((p) => p.respondida).length;
+  const faltantes = 6 - respondidas;
 
   // Si es día 13+ y el autor no cargó preguntas → compensación automática
   if (dia >= 13 && total === 0) {
@@ -69,7 +70,6 @@ async function verificarEstadoEspecial(periodo, destinatario) {
 
   // Si pasó el día 18 y no está completo → inutilizar
   if (dia > 18) {
-    const respondidas = preguntasAutor.filter((p) => p.respondida).length;
     if (respondidas < total || total < 6) {
       if (!vem) {
         vem = await ValeEspecialMes.create({
