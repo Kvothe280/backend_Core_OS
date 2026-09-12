@@ -24,6 +24,7 @@ const avatarRoutes = require('./routes/avatar.routes'); // protegida: solo POST
 const cancionesRoutes = require('./routes/canciones.routes');
 const wishlistRoutes = require('./routes/wishlist.routes');
 const fechasImportantesRoutes = require('./routes/fechasImportantes.routes');
+const logrosRoutes = require('./routes/logros.routes');
 
 const app = express();
 
@@ -57,5 +58,6 @@ app.use('/api/avatar', avatarRoutes);
 app.use('/api/canciones', cancionesRoutes);
 app.use('/api/wishlist', wishlistRoutes);
 app.use('/api/fechas-importantes', fechasImportantesRoutes);
+app.use('/api/logros', logrosRoutes);
 
 module.exports = app;
