@@ -8,8 +8,10 @@ function diaActual() {
   return new Date().getDate();
 }
 
+// 'YYYY-MM-DD' del día calendario LOCAL, no UTC — toISOString().slice(0,10)
+// ya cae en el día siguiente entre las 18:00 y medianoche en México (UTC-6).
 function fechaHoy() {
-  return new Date().toISOString().slice(0, 10);
+  return diaClave(new Date());
 }
 
 function semanaActual() {
