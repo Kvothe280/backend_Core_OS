@@ -15,8 +15,12 @@ async function crear(req, res) {
 
 async function actualizar(req, res) {
   try {
-    const doc = await ValePool.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    const doc = await ValePool.findById(req.params.id);
     if (!doc) return res.status(404).json({ error: 'No encontrado.' });
+    const { titulo, descripcion } = req.body;
+    if (titulo) doc.titulo = titulo;
+    if (descripcion !== undefined) doc.descripcion = descripcion;
+    await doc.save();
     res.json(doc);
   } catch { res.status(500).json({ error: 'No se pudo actualizar.' }); }
 }
