@@ -1,7 +1,9 @@
+const jwt = require('jsonwebtoken');
 const Carta = require('../models/Carta');
 const Recuerdo = require('../models/Recuerdo');
 const Mensaje = require('../models/Mensaje');
 const Perfil = require('../models/Perfil');
+const { JWT_SECRET } = require('../config/env');
 
 async function getImagenCarta(req, res) {
   try {
@@ -25,6 +27,14 @@ async function getImagenRecuerdo(req, res) {
 
 async function getImagenMensaje(req, res) {
   try {
+    // Los mensajes son un chat privado — a diferencia de recuerdos/cartas/avatar,
+    // esta imagen sí requiere sesión válida, vía token en query (un <img> no puede
+    // mandar header Authorization).
+    try {
+      jwt.verify(req.query.token, JWT_SECRET);
+    } catch {
+      return res.status(401).end();
+    }
     const m = await Mensaje.findById(req.params.id).select('+imagenData');
     if (!m?.imagenData) return res.status(404).end();
     res.set('Content-Type', m.imagenMime || 'image/jpeg');

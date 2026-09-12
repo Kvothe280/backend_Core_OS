@@ -2,14 +2,14 @@ const { WA_CONFIG } = require('../config/whatsapp');
 const { fechaHoy } = require('../utils/fechas');
 
 console.log('[WA] Config cargada —',
-  `karol: ${process.env.WA_KAROL_PHONE?.slice(-4) ?? 'SIN PHONE'} / key=${process.env.WA_KAROL_KEY ?? 'SIN KEY'}`,
-  `| enrique: ${process.env.WA_ENRIQUE_PHONE?.slice(-4) ?? 'SIN PHONE'} / key=${process.env.WA_ENRIQUE_KEY ?? 'SIN KEY'}`
+  `karol: ${process.env.WA_KAROL_PHONE?.slice(-4) ?? 'SIN PHONE'} / key=${process.env.WA_KAROL_KEY ? 'OK' : 'SIN KEY'}`,
+  `| enrique: ${process.env.WA_ENRIQUE_PHONE?.slice(-4) ?? 'SIN PHONE'} / key=${process.env.WA_ENRIQUE_KEY ? 'OK' : 'SIN KEY'}`
 );
 
 async function enviarWhatsApp(usuario, texto) {
   const cfg = WA_CONFIG[usuario];
   if (!cfg?.phone || !cfg?.key) {
-    console.warn(`[WA] Sin credenciales para "${usuario}": phone=${cfg?.phone} key=${cfg?.key}`);
+    console.warn(`[WA] Sin credenciales para "${usuario}": phone=${cfg?.phone ? 'OK' : 'FALTA'} key=${cfg?.key ? 'OK' : 'FALTA'}`);
     return false;
   }
   try {
