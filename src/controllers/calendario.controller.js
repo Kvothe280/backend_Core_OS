@@ -18,8 +18,8 @@ async function getCalendario(req, res) {
     const fin = new Date(year, month, 1);
 
     const [valesCanjeados, valesEspecialesCanjeados, recuerdos, cartas, citasPropuestas] = await Promise.all([
-      Vale.find({ estado: 'canjeado', usuario, 'detalles_canje.fecha': { $gte: inicio, $lt: fin } }).lean(),
-      ValeEspecialMes.find({ estado: 'canjeado', destinatario: usuario, fechaCanje: { $gte: inicio, $lt: fin } }).lean(),
+      Vale.find({ estado: 'canjeado', 'detalles_canje.fecha': { $gte: inicio, $lt: fin } }).lean(),
+      ValeEspecialMes.find({ estado: 'canjeado', fechaCanje: { $gte: inicio, $lt: fin } }).lean(),
       Recuerdo.find({ fecha: { $gte: inicio, $lt: fin } }).lean(),
       Carta.find({ $or: [{ fecha: { $gte: inicio, $lt: fin } }, { createdAt: { $gte: inicio, $lt: fin } }] }).lean(),
       CitaPropuesta.find({
